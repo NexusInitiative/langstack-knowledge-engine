@@ -16,6 +16,48 @@ RAG knowledge engine for LangChain and LangGraph, ingesting docs, repositories, 
 | 5 | Interfaces — MCP server for agent consumers |
 | 6 | Hardening — multi-provider models, scale |
 
+**Big picture (target end state, not built yet):**
+```mermaid
+flowchart LR
+    subgraph Sources
+        A1[Docs site / docs repos]
+        A2[Changelogs & releases]
+        A3[GitHub code, issues, PRs — later]
+    end
+
+    subgraph Ingestion
+        B1[Fetch & normalize<br/>canonical URL, version, hash]
+        B2[Parse & chunk<br/>structure-aware]
+        B3[Embed]
+    end
+
+    subgraph Postgres
+        C1[(documents & chunks<br/>+ metadata)]
+        C2[(pgvector HNSW index)]
+        C3[(lexical tsvector index)]
+    end
+
+    subgraph Retrieval
+        D1[Dense + lexical search<br/>RRF fusion]
+        D2[Rerank — phase 2]
+    end
+
+    subgraph Answering
+        E1[Context assembly]
+        E2[Grounded generation<br/>citations + abstention]
+    end
+
+    F[Eval harness + golden set]
+
+    Sources --> B1 --> B2 --> B3 --> C1
+    C1 --- C2
+    C1 --- C3
+    C2 --> D1 --> D2 --> E1 --> E2
+    C3 --> D1
+    F -.measures.-> D1
+    F -.measures.-> E2
+```
+
 **Status:** repo bootstrap only — a `uv`-managed Python project and a Docker Compose Postgres/pgvector service, no schema or ingestion logic yet. Full backlog, dependencies, and rationale are tracked as GitHub issues (labeled by phase/epic/priority) on this repo.
 
 ### Local dev setup
