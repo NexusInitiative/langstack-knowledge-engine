@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
+    container_name: lkengine-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lkengine}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lkengine}
+      POSTGRES_DB: ${POSTGRES_DB:-lkengine}
+    volumes:
+      - lkengine_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lkengine} -d ${POSTGRES_DB:-lkengine}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  lkengine_pgdata:
+    name: lkengine_pgdata
