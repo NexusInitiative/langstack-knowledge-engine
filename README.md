@@ -58,12 +58,19 @@ flowchart LR
     F -.measures.-> E2
 ```
 
-**Status:** repo bootstrap only — a `uv`-managed Python project and a Docker Compose Postgres/pgvector service, no schema or ingestion logic yet. Full backlog, dependencies, and rationale are tracked as GitHub issues (labeled by phase/epic/priority) on this repo.
+**Status:** Phase 0 is roughly half done: ingestion (parse → structure-aware chunking → BGE-M3 embeddings → pgvector), hybrid retrieval (dense + sparse + full-text, RRF-fused, metadata-filtered), and the retrieval eval harness are implemented and tested. Not yet built: the grounded answer composer (#9), injection defenses (#11), the first real baseline numbers (#12), reranking, and the docs/GitHub fetchers. See [docs/ROADMAP.md](docs/ROADMAP.md) for issue-by-issue status.
+
+**Docs:** [Architecture & decisions](docs/ARCHITECTURE.md) · [Evaluation](docs/EVALUATION.md) · [Development guide](docs/DEVELOPMENT.md) · [Roadmap](docs/ROADMAP.md)
 
 ### Local dev setup
 ```
-uv sync --dev
+uv sync --dev                  # add `--extra bge` for the real BGE-M3 embedder (pulls torch)
 cp .env.example .env
-docker compose up -d
-uv run pytest
+docker compose up -d           # Postgres 16 + pgvector 0.8
+uv run pytest                  # integration tests skip if Postgres isn't reachable
+
+uv run lkengine ingest         # index the shipped corpus (idempotent)
+uv run lkengine search "why does my graph hang?" --product LangGraph both
+uv run lkengine eval           # Recall@k / MRR against the golden set
 ```
+Use `--embedder hash` on any command for a dependency-free smoke run (no model download; results are not representative).

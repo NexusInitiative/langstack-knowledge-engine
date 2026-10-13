@@ -1,5 +1,9 @@
 # RAG Deployment — pgvector + BGE-M3
 
+> **Reference implementation, kept for provenance.** The maintained, tested version of
+> this pipeline is the `lkengine` package (see `docs/ARCHITECTURE.md` in the repo root). The
+> scripts below are not modified; the package supersedes them.
+
 Reference implementation for serving this corpus. Four files:
 
 | File | Purpose |
