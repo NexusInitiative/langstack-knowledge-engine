@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_USER: lkengine
+          POSTGRES_PASSWORD: lkengine
+          POSTGRES_DB: lkengine
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lkengine -d lkengine"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Integration tests run for real here; locally they skip without a database.
+      DATABASE_URL: postgresql://lkengine:lkengine@localhost:5432/lkengine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # No `--extra bge`: tests use the deterministic HashingEmbedder, so CI
+      # never downloads torch or a 2 GB model.
+      - run: uv sync --dev --frozen
+      - run: uv run pytest -ra
