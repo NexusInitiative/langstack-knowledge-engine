@@ -41,3 +41,36 @@ def test_real_corpus_invariants():
     # reproducible: same input -> same hashes
     again, _ = build_chunks(parse_corpus(CORPUS_DIR))
     assert [c.content_hash for c in chunks] == [c.content_hash for c in again]
+
+
+import pytest
+
+from lkengine.ingest.parser import CorpusParseError
+
+
+def _write(tmp_path, name, doc_id, section_ids):
+    body = "\n\n".join(f"## {s} — h\n\ntext" for s in section_ids)
+    (tmp_path / name).write_text(
+        f"---\ndoc_id: {doc_id}\ntitle: T\nseries: LG\nproduct: both\nlast_verified: 2026-08-13\n---\n\n{body}\n"
+    )
+
+
+def test_duplicate_section_ids_are_rejected(tmp_path):
+    _write(tmp_path, "a.md", "LG-04", ["LG-04.1", "LG-04.1"])
+    with pytest.raises(CorpusParseError, match="duplicate section id LG-04.1"):
+        build_chunks(parse_corpus(tmp_path))
+
+
+def test_section_id_must_belong_to_its_document(tmp_path):
+    _write(tmp_path, "a.md", "LG-04", ["LG-05.1"])
+    with pytest.raises(CorpusParseError, match="LG-05.1.*LG-04"):
+        build_chunks(parse_corpus(tmp_path))
+
+
+def test_tilde_fenced_code_counts_as_code(tmp_path):
+    (tmp_path / "a.md").write_text(
+        "---\ndoc_id: LG-04\ntitle: T\nseries: LG\nproduct: both\nlast_verified: 2026-08-13\n---\n\n"
+        "## LG-04.1 — h\n\n~~~\nx\n~~~\n"
+    )
+    (c,), _ = build_chunks(parse_corpus(tmp_path))
+    assert c.has_code

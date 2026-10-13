@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from lkengine.ingest.chunker import DEFAULT_MAX_TOKENS, split_section_body
+from lkengine.ingest.fences import contains_fence
+from lkengine.ingest.parser import CorpusParseError
 from lkengine.models import Chunk, CorpusDocument, Section, chunk_id_for, hash_content
 
 
@@ -28,8 +30,19 @@ def build_chunks(
     """
     chunks: list[Chunk] = []
     xrefs: list[tuple[str, str]] = []
+    seen_sections: set[str] = set()
     for doc, sections in parsed:
         for section in sections:
+            # Fail loudly: a duplicated or mis-filed id would otherwise make two
+            # chunks share a primary key and one would silently overwrite the other.
+            if section.section_id in seen_sections:
+                raise CorpusParseError(
+                    f"{doc.source_path}: duplicate section id {section.section_id}")
+            seen_sections.add(section.section_id)
+            if section.section_id.rsplit(".", 1)[0] != doc.doc_id:
+                raise CorpusParseError(
+                    f"{doc.source_path}: section {section.section_id} does not belong to "
+                    f"document {doc.doc_id}")
             for part, body in enumerate(split_section_body(section.body, max_tokens=max_tokens), 1):
                 content = f"# {doc.title}\n\n{body}"
                 chunks.append(
@@ -43,7 +56,7 @@ def build_chunks(
                         content=content,
                         content_hash=hash_content(content),
                         word_count=len(content.split()),
-                        has_code="```" in body,
+                        has_code=contains_fence(body),
                         is_retrievable=doc.is_retrievable,
                     )
                 )

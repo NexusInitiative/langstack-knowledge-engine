@@ -56,9 +56,12 @@ _FILTER_SQL = """
 """
 
 _CHANNEL_SQL = {
+    # No tie-break column on purpose: pgvector can only use its ANN index when
+    # ORDER BY is exactly the distance operator. Ties are broken later, in
+    # ``rrf_fuse``, deterministically.
     "dense": f"""
         SELECT chunk_id FROM corpus_chunks WHERE {_FILTER_SQL}
-        ORDER BY dense <=> %(qdense)s::vector, chunk_id LIMIT %(pool)s""",
+        ORDER BY dense <=> %(qdense)s::vector LIMIT %(pool)s""",
     # '<#>' is *negative* inner product; < 0 keeps only rows sharing a token.
     "sparse": f"""
         SELECT chunk_id FROM corpus_chunks
@@ -82,6 +85,12 @@ def _cols(prefix: str = "") -> str:
     return ", ".join(prefix + f for f in _HIT_FIELDS)
 
 
+def _as_list(value: Sequence[str] | str | None) -> list[str] | None:
+    if not value:
+        return None
+    return [value] if isinstance(value, str) else list(value)  # a bare str is one value
+
+
 @dataclass(frozen=True)
 class SearchFilters:
     """Metadata pre-filters. ``None`` means "don't filter on this".
@@ -97,8 +106,8 @@ class SearchFilters:
 
     def params(self) -> dict:
         return {
-            "product": list(self.product) if self.product else None,
-            "series": list(self.series) if self.series else None,
+            "product": _as_list(self.product),
+            "series": _as_list(self.series),
             "max_tier": self.max_tier,
         }
 
@@ -165,15 +174,24 @@ class HybridRetriever:
         with self._conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 f"""
-                SELECT DISTINCT {_cols('c.')}
+                SELECT x.from_section_id AS cited_by, {_cols('c.')}
                 FROM corpus_xrefs x
                 JOIN corpus_chunks c ON c.chunk_id = x.to_doc_id || '.1'
                 WHERE x.from_section_id = ANY(%s) AND c.is_retrievable
-                  AND NOT (c.doc_id = ANY(%s))
-                ORDER BY c.chunk_id LIMIT %s""",
-                (top_sections, have_docs, limit),
+                  AND NOT (c.doc_id = ANY(%s))""",
+                (top_sections, have_docs),
             )
-            return [RetrievalHit(**row) for row in cur.fetchall()]
+            rows = cur.fetchall()
+        # Order by the rank of the hit that cited each overview (best hit first),
+        # so the limit keeps the most relevant references, not alphabetical ones.
+        rows.sort(key=lambda r: (top_sections.index(r["cited_by"]), r["chunk_id"]))
+        out, seen = [], set()
+        for r in rows:
+            r.pop("cited_by")
+            if r["chunk_id"] not in seen:
+                seen.add(r["chunk_id"])
+                out.append(RetrievalHit(**r))
+        return out[:limit]
 
     # -- internals ------------------------------------------------------------
 

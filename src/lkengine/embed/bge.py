@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from lkengine.embed.base import Embedding
+from lkengine.embed.base import Embedding, EmbedderUnavailable
 
 # XLM-RoBERTa vocabulary size; verified against the tokenizer on first load.
 BGE_M3_VOCAB = 250_002
@@ -42,7 +42,7 @@ class BGEM3Embedder:
             try:
                 from FlagEmbedding import BGEM3FlagModel
             except ImportError as e:  # pragma: no cover - environment dependent
-                raise RuntimeError(
+                raise EmbedderUnavailable(
                     "BGE-M3 needs the optional dependency: run `uv sync --extra bge` "
                     "(or use --embedder hash for a dependency-free smoke run)."
                 ) from e

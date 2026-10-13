@@ -48,7 +48,7 @@ starts a pgvector service).
 | I want to… | Do |
 |---|---|
 | index the corpus | `uv run lkengine ingest` (safe to repeat; only changed chunks are embedded) |
-| change embedding model / dims | `lkengine db reset && lkengine --embedder X ingest` |
+| change embedding model / dims | `lkengine db reset && lkengine ingest --embedder X` |
 | inspect a query | `lkengine search "…" --product LangGraph both --expand` (shows per-channel ranks) |
 | score a change | `lkengine eval` before and after; compare per-category |
 | enable HNSW | `lkengine db init --ann` (only worthwhile at ~100k chunks) |

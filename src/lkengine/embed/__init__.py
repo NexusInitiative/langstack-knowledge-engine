@@ -1,6 +1,6 @@
 """Embedding models behind the ``Embedder`` protocol."""
 
-from lkengine.embed.base import Embedder, Embedding
+from lkengine.embed.base import Embedder, EmbedderUnavailable, Embedding
 
 EMBEDDER_NAMES = ("bge", "hash")
 
@@ -16,4 +16,4 @@ def make_embedder(name: str) -> Embedder:
     raise ValueError(f"unknown embedder {name!r}; choose from {EMBEDDER_NAMES}")
 
 
-__all__ = ["Embedder", "Embedding", "make_embedder", "EMBEDDER_NAMES"]
+__all__ = ["Embedder", "EmbedderUnavailable", "Embedding", "make_embedder", "EMBEDDER_NAMES"]

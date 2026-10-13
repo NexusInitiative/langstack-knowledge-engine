@@ -70,3 +70,14 @@ def test_chunks_for_deleted_sections_are_pruned(conn, tmp_path):
 def test_cross_references_are_recorded(conn, tmp_path):
     run(conn, write_corpus(tmp_path))
     assert conn.execute("SELECT from_section_id, to_doc_id FROM corpus_xrefs").fetchall() == [("LG-04.1", "SH-07")]
+
+
+def test_empty_or_wrong_corpus_refuses_to_wipe_the_index(conn, tmp_path):
+    import pytest
+    from lkengine.ingest.pipeline import EmptyCorpusError
+
+    run(conn, write_corpus(tmp_path / "good"))
+    (tmp_path / "empty").mkdir()
+    with pytest.raises(EmptyCorpusError):
+        run(conn, tmp_path / "empty")
+    assert conn.execute("SELECT count(*) FROM corpus_chunks").fetchone() == (6,)

@@ -27,12 +27,12 @@ from pathlib import Path
 
 import yaml
 
+from lkengine.ingest.fences import FenceTracker
 from lkengine.models import CorpusDocument, Section
 
 SECTION_HEADING_RE = re.compile(r"^## ((?:LC|LG|SH|AC|META)-\d+\.\d+)\b")
 XREF_RE = re.compile(r"`((?:LC|LG|SH|AC|META)-\d+)`")
-FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n(.*)\Z", re.S)
-FENCE_RE = re.compile(r"^\s*(```|~~~)")
+FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---[ \t]*(?:\n(.*))?\Z", re.S)
 
 _REQUIRED = ("doc_id", "title", "series", "product", "last_verified")
 
@@ -58,7 +58,9 @@ def parse_document(
     """Parse one file. Returns ``None`` for files without frontmatter
     (READMEs are intentionally not part of the corpus)."""
     path, root = Path(path), Path(root)
-    raw = path.read_text(encoding="utf-8")
+    # Tolerate a BOM and CRLF (Windows editors, git autocrlf): without this the
+    # frontmatter regex fails and the whole document would be skipped silently.
+    raw = path.read_text(encoding="utf-8").removeprefix("\ufeff").replace("\r\n", "\n")
     m = FRONTMATTER_RE.match(raw)
     if not m:
         return None
@@ -82,18 +84,18 @@ def parse_document(
         canonical_url=meta.get("canonical_url"),
         license=meta.get("license"),
     )
-    return doc, split_sections(m.group(2), doc_id=doc.doc_id)
+    return doc, split_sections(m.group(2) or "", doc_id=doc.doc_id)
 
 
 def split_sections(markdown: str, *, doc_id: str) -> list[Section]:
     """Split a document body into sections; fence-aware (see module docstring)."""
     blocks: list[list[str]] = []
-    in_fence = False
+    fences = FenceTracker()
     current: list[str] | None = None
 
     for line in markdown.split("\n"):
-        if FENCE_RE.match(line):
-            in_fence = not in_fence
+        fences.update(line)
+        in_fence = fences.in_fence
         starts_section = not in_fence and SECTION_HEADING_RE.match(line)
         starts_other_h2 = not in_fence and line.startswith("## ") and not starts_section
         if starts_section:

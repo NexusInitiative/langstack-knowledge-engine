@@ -98,3 +98,34 @@ def test_parse_corpus_walks_recursively_and_orders_deterministically(tmp_path):
     write(tmp_path, "README.md", "# no frontmatter\n")
     docs = parse_corpus(tmp_path)
     assert [d.doc_id for d, _ in docs] == ["LG-99", "LG-98"]  # sorted by path: a.md < sub/b.md
+
+
+# -- regressions found in review ---------------------------------------------
+def test_crlf_line_endings_and_bom_are_handled(tmp_path):
+    text = "﻿" + DOC.replace("\n", "\r\n")
+    doc, sections = parse_document(write(tmp_path, "crlf.md", text), root=tmp_path)
+    assert doc.doc_id == "LG-99" and len(sections) == 2
+
+
+def test_frontmatter_only_file_without_trailing_newline_is_not_dropped(tmp_path):
+    only_fm = "---\ndoc_id: LG-97\ntitle: T\nseries: LG\nproduct: both\nlast_verified: 2026-01-01\n---"
+    doc, sections = parse_document(write(tmp_path, "fm.md", only_fm), root=tmp_path)
+    assert doc.doc_id == "LG-97" and sections == []
+
+
+def test_longer_outer_fence_is_not_closed_by_a_shorter_inner_fence(tmp_path):
+    text = DOC.replace(
+        "```python\n## this looks like a heading but lives inside a fence\nx = 1\n```",
+        "````markdown\n```python\nx = 1\n```\n## LG-99.9 — fake heading in an example\n````",
+    )
+    _, sections = parse_document(write(tmp_path, "d.md", text), root=tmp_path)
+    assert [s.section_id for s in sections] == ["LG-99.1", "LG-99.2"]
+
+
+def test_tilde_fence_is_not_closed_by_backticks(tmp_path):
+    text = DOC.replace(
+        "```python\n## this looks like a heading but lives inside a fence\nx = 1\n```",
+        "~~~\n```\n## LG-99.9 — fake\n~~~",
+    )
+    _, sections = parse_document(write(tmp_path, "d.md", text), root=tmp_path)
+    assert [s.section_id for s in sections] == ["LG-99.1", "LG-99.2"]

@@ -74,7 +74,7 @@ def upsert_chunk(
     """
     d = chunk.doc
     refresh_only = embedding is None and chunk.is_retrievable
-    conn.execute(
+    cur = conn.execute(
         _REFRESH if refresh_only else _UPSERT,
         {
             "chunk_id": chunk.chunk_id, "section_id": chunk.section_id, "part": chunk.part,
@@ -91,6 +91,9 @@ def upsert_chunk(
             "sparse": sparse_literal(embedding.sparse, sparse_dim) if embedding else None,
         },
     )
+    if refresh_only and cur.rowcount != 1:
+        raise RuntimeError(
+            f"chunk {chunk.chunk_id} vanished during ingest (concurrent writer?); re-run ingest")
 
 
 def delete_missing(conn: psycopg.Connection, keep_ids: Collection[str]) -> int:

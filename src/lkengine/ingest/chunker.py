@@ -29,10 +29,10 @@ deliberately conservative for English prose/code mixes.
 from __future__ import annotations
 
 import math
-import re
+
+from lkengine.ingest.fences import FenceTracker
 
 DEFAULT_MAX_TOKENS = 480
-_FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 
 def approx_tokens(text: str) -> int:
@@ -74,7 +74,7 @@ def _blocks(text: str) -> list[tuple[str, bool]]:
     """Split on blank lines, except inside fences. Returns (text, is_fence)."""
     blocks: list[tuple[str, bool]] = []
     buf: list[str] = []
-    in_fence = False
+    fences = FenceTracker()
 
     def flush(is_fence: bool) -> None:
         if buf:
@@ -82,23 +82,20 @@ def _blocks(text: str) -> list[tuple[str, bool]]:
             buf.clear()
 
     for line in text.split("\n"):
-        if _FENCE_RE.match(line):
-            if not in_fence:
-                flush(False)  # prose before the fence ends here
-                in_fence = True
-                buf.append(line)
-            else:
-                buf.append(line)
-                in_fence = False
-                flush(True)
-            continue
-        if in_fence:
+        event = fences.update(line)
+        if event == "open":
+            flush(False)  # prose before the fence ends here
+            buf.append(line)
+        elif event == "close":
+            buf.append(line)
+            flush(True)
+        elif event == "inside":
             buf.append(line)
         elif line.strip() == "":
             flush(False)
         else:
             buf.append(line)
-    flush(in_fence)  # unterminated fence: keep it atomic anyway
+    flush(fences.in_fence)  # unterminated fence: keep it atomic anyway
     return [(t, f) for t, f in blocks if t.strip()]
 
 

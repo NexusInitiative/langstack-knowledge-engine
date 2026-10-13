@@ -26,6 +26,10 @@ class Embedding:
     sparse: dict[int, float]     # model token id (0-based) -> positive weight
 
 
+class EmbedderUnavailable(RuntimeError):
+    """The chosen embedder can't run here (e.g. optional dependency not installed)."""
+
+
 class Embedder(Protocol):
     model_id: str      # recorded per chunk; a change forces re-embedding
     dense_dim: int     # width of the pgvector ``vector`` column

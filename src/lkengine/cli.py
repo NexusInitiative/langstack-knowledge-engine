@@ -5,7 +5,8 @@
     lkengine search "query"           hybrid retrieval, prints cited results
     lkengine eval                     Recall@k / MRR against the golden set
 
-Every command takes ``--embedder bge|hash``. ``hash`` is a dependency-free
+Every command takes ``--embedder bge|hash`` (after the command name, e.g.
+``lkengine ingest --embedder hash``). ``hash`` is a dependency-free
 fake for smoke runs; the index and the queries must use the same embedder
 (checked, with a clear error). ``DATABASE_URL`` comes from the environment or
 ``.env`` (see ``.env.example``).
@@ -24,30 +25,34 @@ from collections.abc import Sequence
 
 from lkengine.db.connection import get_connection
 from lkengine.db.migrate import SchemaMismatchError, apply_schema, create_ann_index, reset_schema
-from lkengine.embed import EMBEDDER_NAMES, make_embedder
+from lkengine.embed import EMBEDDER_NAMES, EmbedderUnavailable, make_embedder
 from lkengine.eval.golden import load_golden
 from lkengine.eval.harness import DEFAULT_KS, evaluate
-from lkengine.ingest.pipeline import ingest_corpus
+from lkengine.ingest.pipeline import EmptyCorpusError, ingest_corpus
 from lkengine.paths import CORPUS_DIR, GOLDEN_SET_PATH
 from lkengine.retrieval.hybrid import HybridRetriever, SearchFilters
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="lkengine", description=__doc__.split("\n\n")[0])
-    p.add_argument("--embedder", choices=EMBEDDER_NAMES,
-                   default=os.environ.get("LKENGINE_EMBEDDER", "bge"),
-                   help="embedding model (default: bge; env LKENGINE_EMBEDDER)")
+    # Defined once and inherited by every subcommand (argparse only accepts an
+    # option where its parser is active, so a top-level flag would have to
+    # precede the command name).
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--embedder", choices=EMBEDDER_NAMES,
+                        default=os.environ.get("LKENGINE_EMBEDDER", "bge"),
+                        help="embedding model (default: bge; env LKENGINE_EMBEDDER)")
     sub = p.add_subparsers(dest="command", required=True)
 
-    db = sub.add_parser("db", help="schema management")
+    db = sub.add_parser("db", parents=[common], help="schema management")
     db.add_argument("action", choices=["init", "reset"])
     db.add_argument("--ann", action="store_true", help="init: also create the opt-in HNSW index")
 
-    ing = sub.add_parser("ingest", help="index the corpus (idempotent)")
+    ing = sub.add_parser("ingest", parents=[common], help="index the corpus (idempotent)")
     ing.add_argument("--corpus", default=str(CORPUS_DIR))
     ing.add_argument("--batch-size", type=int, default=32)
 
-    s = sub.add_parser("search", help="hybrid retrieval")
+    s = sub.add_parser("search", parents=[common], help="hybrid retrieval")
     s.add_argument("query")
     s.add_argument("--product", nargs="*", help="LangChain LangGraph both")
     s.add_argument("--series", nargs="*", help="LC LG SH AC")
@@ -57,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--expand", action="store_true", help="also show cross-referenced overviews")
     s.add_argument("--json", action="store_true")
 
-    e = sub.add_parser("eval", help="score retrieval against the golden set")
+    e = sub.add_parser("eval", parents=[common], help="score retrieval against the golden set")
     e.add_argument("--golden", default=str(GOLDEN_SET_PATH))
     e.add_argument("--ks", type=int, nargs="+", default=list(DEFAULT_KS))
     e.add_argument("--json", action="store_true")
@@ -68,7 +73,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return _COMMANDS[args.command](args)
-    except SchemaMismatchError as e:
+    except (SchemaMismatchError, EmbedderUnavailable, EmptyCorpusError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
@@ -132,8 +137,10 @@ def _cmd_eval(args) -> int:
     depth = max(args.ks)
     with get_connection() as conn:
         retriever = HybridRetriever(conn, embedder)
+        # Over-fetch: a long section can occupy several chunk slots, and the
+        # harness scores unique *sections*, so `depth` chunks may be < `depth` sections.
         report = evaluate(
-            lambda q: [h.section_id for h in retriever.search(q, top_k=depth)],
+            lambda q: [h.section_id for h in retriever.search(q, top_k=depth * 3)],
             questions, ks=args.ks,
         )
     print(report.to_json() if args.json else report.format_text())

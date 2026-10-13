@@ -62,3 +62,11 @@ def test_blank_lines_inside_fences_do_not_create_paragraph_breaks():
 def test_approx_tokens_uses_words_times_1_4_rounded_up():
     assert approx_tokens("one two three four five") == 7  # ceil(5 * 1.4)
     assert approx_tokens("") == 0
+
+
+def test_inner_shorter_fence_does_not_end_an_outer_longer_fence():
+    outer = "````markdown\n```python\nx = 1\n```\n\ny = 2\n````"
+    body = "\n\n".join([HEADING, para(80, "a"), "Example:", outer, para(80, "b")])
+    parts = split_section_body(body, max_tokens=150)
+    holder = [p for p in parts if "y = 2" in p]
+    assert len(holder) == 1 and outer in holder[0]

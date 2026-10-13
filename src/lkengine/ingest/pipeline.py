@@ -5,6 +5,11 @@ unchanged corpus embeds **nothing** the second time. A chunk is re-embedded
 iff its ``content_hash`` or the ``embedding_model`` differs from what is
 stored. Metadata-only edits (a tier or tag change in frontmatter) are applied
 without re-embedding.
+
+Assumes a single writer: ingestion reads the index state, embeds (slow), then
+writes in one transaction. Two concurrent ingests could interleave; the write
+path detects a vanished row and aborts rather than silently skipping it, and a
+re-run converges. Fine for a CLI/cron job; revisit if ingestion becomes a service.
 """
 
 from __future__ import annotations
@@ -21,6 +26,11 @@ from lkengine.ingest.build import build_chunks
 from lkengine.ingest.chunker import DEFAULT_MAX_TOKENS
 from lkengine.ingest.parser import parse_corpus
 from lkengine.models import Chunk
+
+
+class EmptyCorpusError(RuntimeError):
+    """Parsing produced no chunks. Refusing to continue: pruning "everything
+    that is not in the corpus" against an empty corpus would wipe the index."""
 
 
 @dataclass(frozen=True)
@@ -48,6 +58,9 @@ def ingest_corpus(
 ) -> IngestReport:
     apply_schema(conn, dense_dim=embedder.dense_dim, sparse_dim=embedder.sparse_dim)
     chunks, xrefs = build_chunks(parse_corpus(root), max_tokens=max_tokens)
+    if not chunks:
+        raise EmptyCorpusError(
+            f"no sections found under {root}; check the path (nothing was changed)")
 
     state = store.load_index_state(conn)
     stale = [c for c in chunks if c.is_retrievable and state.get(c.chunk_id) != (c.content_hash, embedder.model_id)]

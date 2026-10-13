@@ -103,8 +103,10 @@ corpus (its frontmatter doesn't carry them); the Phase 1 fetchers populate them.
 ## 4. Ingestion
 
 1. **Parse** (`parser.py`). Frontmatter → `CorpusDocument`; body → sections.
-   Splitting is *fence-aware*: a `## comment` line inside a ``` block is not a
-   heading. Files without frontmatter (READMEs) are skipped; frontmatter that is
+   Splitting is *fence-aware* with CommonMark rules (`ingest/fences.py`: a fence
+   closes only on the same character, at least as long as the opener), so a
+   `## comment` line inside a code block — even a ```` ````markdown ```` block that
+   demonstrates a ``` fence — is not a heading. BOM and CRLF files are accepted. Files without frontmatter (READMEs) are skipped; frontmatter that is
    present but incomplete is a hard error rather than a silent skip.
 2. **Chunk** (`chunker.py`). Heading-bounded; token-capped (default 480 ≈ the
    512-token cross-encoder budget minus room for the query); a code fence is
@@ -115,6 +117,9 @@ corpus (its frontmatter doesn't carry them); the Phase 1 fetchers populate them.
    free — the cheap deterministic version of "contextual retrieval"
    (Anthropic's technique of LLM-written chunk prefixes; spike #21 will measure
    whether the expensive version beats this).
+   `build_chunks` also rejects duplicate section ids and ids that don't belong to
+   their document — two chunks sharing a primary key would otherwise silently
+   overwrite each other.
 4. **Index** (`pipeline.py`). Only chunks whose `content_hash` *or*
    `embedding_model` differ from the stored values are embedded. Rerunning on
    an unchanged corpus embeds **zero** chunks; a one-paragraph edit embeds one;
@@ -180,7 +185,10 @@ LangChain results. Note `max_tier` excludes rows with no tier.
   emitted whole by design.
 - No reranker, no answer generation, no prompt-injection defences yet — do not
   expose this to untrusted content until #11/#28 land.
-- Hard-delete pruning, not tombstones (#23).
+- Hard-delete pruning, not tombstones (#23). Ingest refuses to run on a corpus that
+  parses to zero chunks, so a typo'd `--corpus` cannot wipe the index.
+- Ingest assumes a single writer (CLI/cron). A concurrent writer is detected on the
+  metadata-refresh path and aborts the run rather than skipping silently.
 
 ## 8. Extending
 
