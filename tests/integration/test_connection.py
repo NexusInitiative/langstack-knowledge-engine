@@ -1,7 +1,7 @@
 from lkengine.db.connection import get_connection
 
 
-def test_can_connect_and_query():
+def test_can_connect_and_query(database_url):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1")

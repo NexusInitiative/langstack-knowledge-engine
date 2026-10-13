@@ -6,10 +6,18 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
-    "flagembedding>=1.4.0",
     "psycopg[binary]>=3.2",
     "python-dotenv>=1.0",
+    "pyyaml>=6.0",
 ]
+
+[project.optional-dependencies]
+# Heavy (pulls torch). Only needed to run the real BGE-M3 embedder; the unit
+# tests and CI use a deterministic fake embedder and never import it.
+bge = ["flagembedding>=1.4.0"]
+
+[project.scripts]
+lkengine = "lkengine.cli:main"
 
 [dependency-groups]
 dev = [
@@ -24,5 +32,8 @@ build-backend = "hatchling.build"
 packages = ["src/lkengine"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "tests/integration"]
 testpaths = ["tests"]
+markers = [
+    "integration: needs a live Postgres with pgvector (DATABASE_URL); skipped otherwise",
+]
